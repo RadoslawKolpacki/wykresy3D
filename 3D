@@ -1,0 +1,61 @@
+library(shiny)
+library(plotly)
+library(readxl)
+library(dplyr)
+
+# UI
+ui <- fluidPage(
+  titlePanel("Generator wykresów 3D"),
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("files", "Wybierz pliki .xlsx:", multiple = TRUE),
+      selectInput("x_col", "Wybierz kolumnę dla osi X:", NULL),
+      selectInput("y_col", "Wybierz kolumnę dla osi Y:", NULL),
+      selectInput("z_col", "Wybierz kolumnę dla osi Z:", NULL),
+      selectInput("fire_flag", "Wybierz wartość z kolumny FireFlag:", NULL)
+    ),
+    mainPanel(
+      plotlyOutput("plot")
+    )
+  )
+)
+
+# Server
+server <- function(input, output, session) {
+  
+  # Wczytaj i połącz pliki .xlsx
+  data <- reactive({
+    req(input$files)
+    df <- bind_rows(lapply(input$files$datapath, read_excel))
+    return(df)
+  })
+  
+  # Aktualizuj wybór kolumn dla osi X, Y, Z oraz wartości z kolumny FireFlag
+  observe({
+    req(data())
+    updateSelectInput(session, "x_col", choices = colnames(data()))
+    updateSelectInput(session, "y_col", choices = colnames(data()))
+    updateSelectInput(session, "z_col", choices = colnames(data()))
+    updateSelectInput(session, "fire_flag", choices = unique(data()$fireFlag))
+  })
+  
+  # Wybierz co 60 rekord
+  subset_data <- reactive({
+    req(data())
+    data() %>% slice(seq(1, n(), by = 60))
+  })
+  
+  # Generowanie wykresu 3D
+  output$plot <- renderPlotly({
+    req(subset_data(), input$x_col, input$y_col, input$z_col, input$fire_flag)
+    
+    # Wybierz dane odpowiadające wybranej wartości kolumny FireFlag
+    filtered_data <- subset_data() %>% filter(fireFlag == input$fire_flag)
+    
+    plot_ly(filtered_data, x = ~get(input$x_col), y = ~get(input$y_col), z = ~get(input$z_col), 
+            type = "scatter3d", mode = "markers")
+  })
+}
+
+# Uruchomienie aplikacji Shiny
+shinyApp(ui = ui, server = server)
